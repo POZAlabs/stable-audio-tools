@@ -1,32 +1,57 @@
+import os
+
 import torch
 from safetensors.torch import load_file
-
 from torch.nn.utils import remove_weight_norm
 
+
 def copy_state_dict(model, state_dict):
-    """Load state_dict to model, but only for keys that match exactly.
-
-    Args:
-        model (nn.Module): model to load state_dict.
-        state_dict (OrderedDict): state_dict to load.
     """
-    model_state_dict = model.state_dict()
-    for key in state_dict:
-        if key in model_state_dict and state_dict[key].shape == model_state_dict[key].shape:
-            if isinstance(state_dict[key], torch.nn.Parameter):
-                # backwards compatibility for serialized parameters
-                state_dict[key] = state_dict[key].data
-            model_state_dict[key] = state_dict[key]
+    Load a source state_dict (with 'weight' only) into a model that uses weight_norm ('weight_g', 'weight_v').
+    It decomposes 'weight' from the source into 'g' and 'v' for the target model.
+    """
+    target_state_dict = model.state_dict()
+    for key, value in state_dict.items():
+        if key.endswith(".weight"):
+            base_name = key.rsplit(".weight", 1)[0]
+            g_key = base_name + ".weight_g"
+            v_key = base_name + ".weight_v"
 
-    model.load_state_dict(model_state_dict, strict=False)
+            # 타겟 모델에 g와 v 파라미터가 모두 있는지 확인 (weight_norm 적용 여부)
+            if g_key in target_state_dict and v_key in target_state_dict:
+                weight = state_dict[key]
+                norm_dims = tuple(range(1, weight.dim()))
+                norm = torch.norm(weight, p=2, dim=norm_dims, keepdim=True)
+
+                if target_state_dict[v_key].shape == weight.shape and target_state_dict[g_key].shape == norm.shape:
+                    target_state_dict[g_key].copy_(norm)
+                    target_state_dict[v_key].copy_(weight)
+                else:
+                    print(f"  [!] Shape mismatch for '{key}'. Skipping.")
+                    print(f"      - Target g shape: {target_state_dict[g_key].shape}, Calculated norm shape: {norm.shape}")
+                    print(f"      - Target v shape: {target_state_dict[v_key].shape}, Source weight shape: {weight.shape}")
+
+                continue
+
+        # Case 2: 일반 파라미터 (bias 등) 또는 weight_norm이 아닌 weight
+        if key in target_state_dict and target_state_dict[key].shape == value.shape:
+            target_state_dict[key].copy_(value)
+        else:
+            print(f"Warning: Key '{key}' not found in model or shape mismatch. Skipping.")
+
+    # 3. 최종적으로 채워진 state_dict를 모델에 로드
+    model.load_state_dict(target_state_dict, strict=True)
+    print("\nState dict loaded successfully with weight_norm conversion.")
+
 
 def load_ckpt_state_dict(ckpt_path):
     if ckpt_path.endswith(".safetensors"):
         state_dict = load_file(ckpt_path)
     else:
-        state_dict = torch.load(ckpt_path, map_location="cpu", weights_only=True)["state_dict"]
-    
+        state_dict = torch.load(ckpt_path, map_location="cpu", weights_only=False).state_dict()
+
     return state_dict
+
 
 def remove_weight_norm_from_model(model):
     for module in model.modules():
@@ -36,6 +61,7 @@ def remove_weight_norm_from_model(model):
 
     return model
 
+
 try:
     torch._dynamo.config.cache_size_limit = max(64, torch._dynamo.config.cache_size_limit)
     torch._dynamo.config.suppress_errors = True
@@ -44,11 +70,11 @@ except Exception as e:
 
 # Get torch.compile flag from environment variable ENABLE_TORCH_COMPILE
 
-import os
 enable_torch_compile = os.environ.get("ENABLE_TORCH_COMPILE", "0") == "1"
 
+
 def compile(function, *args, **kwargs):
-    
+
     if enable_torch_compile:
         try:
             return torch.compile(function, *args, **kwargs)
@@ -59,6 +85,7 @@ def compile(function, *args, **kwargs):
 
 # Sampling functions copied from https://github.com/facebookresearch/audiocraft/blob/main/audiocraft/utils/utils.py under MIT license
 # License can be found in LICENSES/LICENSE_META.txt
+
 
 def multinomial(input: torch.Tensor, num_samples: int, replacement=False, *, generator=None):
     """torch.multinomial with arbitrary number of dimensions, and number of candidates on the last dimension.
@@ -120,8 +147,10 @@ def sample_top_p(probs: torch.Tensor, p: float) -> torch.Tensor:
     next_token = torch.gather(probs_idx, -1, next_token)
     return next_token
 
+
 def next_power_of_two(n):
     return 2 ** (n - 1).bit_length()
+
 
 def next_multiple_of_64(n):
     return ((n + 63) // 64) * 64

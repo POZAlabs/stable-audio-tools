@@ -1,6 +1,7 @@
 import torch
 from torch.nn import Parameter
 from ..models.factory import create_model_from_config
+from ..models.utils import remove_weight_norm_from_model
 
 def create_training_wrapper_from_config(model_config, model):
     model_type = model_config.get('model_type', None)
@@ -18,6 +19,11 @@ def create_training_wrapper_from_config(model_config, model):
             ema_copy = create_model_from_config(model_config)
             ema_copy = create_model_from_config(model_config) # I don't know why this needs to be called twice but it broke when I called it once
             # Copy each weight to the ema copy
+            
+            if not any('weight_g' in k for k in model.state_dict().keys()):
+                print("Main model has weight_norm removed. Removing from EMA model as well.")
+                remove_weight_norm_from_model(ema_copy)
+            
             for name, param in model.state_dict().items():
                 if isinstance(param, Parameter):
                     # backwards compatibility for serialized parameters
@@ -52,7 +58,8 @@ def create_training_wrapper_from_config(model_config, model):
             ema_copy=ema_copy if use_ema else None,
             force_input_mono=training_config.get("force_input_mono", False),
             latent_mask_ratio=latent_mask_ratio,
-            teacher_model=teacher_model
+            teacher_model=teacher_model,
+            freeze_encoder=training_config.get("freeze_encoder", False),
         )
     elif model_type == 'diffusion_uncond':
         from .diffusion import DiffusionUncondTrainingWrapper

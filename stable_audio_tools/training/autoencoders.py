@@ -45,7 +45,8 @@ class AutoencoderTrainingWrapper(pl.LightningModule):
             force_input_mono = False,
             latent_mask_ratio = 0.0,
             teacher_model: Optional[AudioAutoencoder] = None,
-            clip_grad_norm = 0.0
+            clip_grad_norm = 0.0,
+            freeze_encoder: bool = False,
     ):
         super().__init__()
 
@@ -58,6 +59,7 @@ class AutoencoderTrainingWrapper(pl.LightningModule):
         self.encoder_freeze_on_warmup = encoder_freeze_on_warmup
         self.lr = lr
         self.clip_grad_norm = clip_grad_norm
+        self.freeze_encoder = freeze_encoder
 
         self.force_input_mono = force_input_mono
 
@@ -282,7 +284,12 @@ class AutoencoderTrainingWrapper(pl.LightningModule):
 
 
     def configure_optimizers(self):
-        gen_params = list(self.autoencoder.parameters())
+        if self.freeze_encoder:
+            print("\nEncoder freeze.")
+            gen_params = list(self.autoencoder.decoder.parameters())
+        else:
+            print("\nFull model train.")
+            gen_params = list(self.autoencoder.parameters())
 
         if self.use_disc:
             opt_gen = create_optimizer_from_config(self.optimizer_configs['autoencoder']['optimizer'], gen_params)

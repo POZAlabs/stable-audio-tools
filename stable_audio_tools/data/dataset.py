@@ -94,7 +94,7 @@ def keyword_scandir(
 def get_audio_filenames(
     paths: list,  # directories in which to search
     keywords=None,
-    exts=['.wav', '.mp3', '.flac', '.ogg', '.aif', '.opus']
+    exts=['.wav', '.mp3', '.flac', '.ogg', '.aif', '.opus', '.webm']
 ):
     "recursively get a list of audio filenames"
     filenames = []
