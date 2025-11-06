@@ -1,17 +1,16 @@
-from stable_audio_tools.training import create_training_wrapper_from_config, create_demo_callback_from_config
-from stable_audio_tools.models.utils import copy_state_dict, load_ckpt_state_dict, remove_weight_norm_from_model
-from stable_audio_tools.models import create_model_from_config
-from stable_audio_tools.data.dataset import create_dataloader_from_config, fast_scandir
-from prefigure.prefigure import get_all_args, push_wandb_config
-from typing import Dict, Optional, Union
-import torch
 import json
 import os
-import pytorch_lightning as pl
-
 import warnings
-warnings.filterwarnings("ignore", category=UserWarning)
-warnings.filterwarnings("ignore", category=FutureWarning)
+from pathlib import Path
+import pytorch_lightning as pl
+import torch
+from prefigure.prefigure import get_all_args, push_wandb_config
+from stable_audio_tools.data.dataset import create_dataloader_from_config
+from stable_audio_tools.models import create_model_from_config
+from stable_audio_tools.models.utils import copy_state_dict, load_ckpt_state_dict, remove_weight_norm_from_model
+from stable_audio_tools.training import create_demo_callback_from_config, create_training_wrapper_from_config
+
+warnings.filterwarnings("ignore")
 
 
 class ExceptionCallback(pl.Callback):
@@ -29,7 +28,8 @@ class ModelConfigEmbedderCallback(pl.Callback):
 
 def main():
     torch.multiprocessing.set_sharing_strategy('file_system')
-    args = get_all_args()
+    ini_path = Path(__file__).parent / "defaults.ini"
+    args = get_all_args(ini_path)
     seed = args.seed
 
     if args.no_weight_norm:
