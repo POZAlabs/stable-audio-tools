@@ -109,6 +109,8 @@ def main():
     exc_callback = ExceptionCallback()
 
     if args.logger == 'wandb':
+        if args.resume_id == '':
+            args.resume_id = None
         logger = pl.loggers.WandbLogger(name=args.run_name, project=args.project, id=args.resume_id, resume="allow")
         logger.watch(training_wrapper)
 
